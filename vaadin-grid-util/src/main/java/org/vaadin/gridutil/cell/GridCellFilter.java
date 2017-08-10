@@ -256,28 +256,41 @@ public class GridCellFilter<T> implements Serializable {
     }
 
     /**
-     * allows to add custom FilterComponents to the GridCellFilter
+     * allows to create a {@link CellFilterId} with only a columnId.<br>
+     * Needed to set a custom filter using  {@link #setCustomFilter(CellFilterId, CellFilterComponent)}
      *
-     * @param columnId  id of column
-     * @param component that implements the interface
+     * @param columnId id of column and property if equal
      *
-     * @return your created component that is linked with the GridCellFilter
+     * @return the {@link CellFilterId}
      */
-    public CellFilterComponent setCustomFilter(String columnId, CellFilterComponent component) {
-        return setCustomFilter(columnId, columnId, component);
+    public CellFilterId createCellFilterId(final String columnId) {
+        return new CellFilterId(propertySet, columnId);
+    }
+
+    /**
+     * allows to create a {@link CellFilterId} for the given information<br>
+     * Needed to set a custom filter using  {@link #setCustomFilter(CellFilterId, CellFilterComponent)}
+     *
+     * @param columnId   id of column
+     * @param propertyId id of property
+     *
+     * @return the {@link CellFilterId}
+     */
+    public CellFilterId createCellFilterId(final String columnId, final String propertyId) {
+        return new CellFilterId(propertySet, columnId, propertyId);
     }
 
     /**
      * allows to add custom FilterComponents to the GridCellFilter
      *
-     * @param columnId   id of column
-     * @param propertyId id of the property
-     * @param component  that implements the interface
+     * @param cellFilterId the id created with {@link #createCellFilterId(String)} or
+     * {@link #createCellFilterId(String, *                     String)}
+     * @param component    that implements the interface
      *
      * @return your created component that is linked with the GridCellFilter
      */
-    public CellFilterComponent setCustomFilter(String columnId, String propertyId, CellFilterComponent component) {
-        handleFilterRow(new CellFilterId(propertySet, columnId, propertyId), component);
+    public CellFilterComponent setCustomFilter(final CellFilterId cellFilterId, CellFilterComponent component) {
+        handleFilterRow(cellFilterId, component);
         return component;
     }
 
@@ -717,6 +730,10 @@ public class GridCellFilter<T> implements Serializable {
         private final String                   columnId;
         private final String                   propertyId;
         private final PropertyDefinition<T, ?> propertyDefinition;
+
+        public CellFilterId(final PropertySet<T> propertySet, final String columnId) {
+            this(propertySet, columnId, columnId);
+        }
 
         public CellFilterId(final PropertySet<T> propertySet, final String columnId, final String propertyId) {
             this.columnId = columnId;

@@ -147,10 +147,10 @@ public class DemoUI extends UI {
      * example of a custom FilterComponent
      *
      * @param cellFilter needed to link filter to container
-     * @param columnId
+     * @param cellFilterId
      * @return
      */
-    private CellFilterComponent<HorizontalLayout> customFilterComponent(final GridCellFilter cellFilter, final String columnId) {
+    private CellFilterComponent<HorizontalLayout> customFilterComponent(final GridCellFilter cellFilter, final GridCellFilter<Inhabitants>.CellFilterId cellFilterId) {
         CellFilterComponent<HorizontalLayout> filter = new CellFilterComponent<HorizontalLayout>() {
 
             ComboBox<Continent> comboBox = new ComboBox<>();
@@ -158,10 +158,10 @@ public class DemoUI extends UI {
             public void triggerUpdate() {
                 if (comboBox.getValue() != null) {
                     // this will add filter to container and replace old version if existing
-                    cellFilter.replaceFilter(new CustomFilter(comboBox.getValue()), columnId);
+                    cellFilter.replaceFilter(new CustomFilter(comboBox.getValue()), cellFilterId);
                 } else {
                     // remove filter by columnId
-                    cellFilter.removeFilter(columnId);
+                    cellFilter.removeFilter(cellFilterId);
                 }
             }
 
@@ -221,7 +221,9 @@ public class DemoUI extends UI {
                 new GridCellFilter.BooleanRepresentation(false, VaadinIcons.THUMBS_DOWN, "nope"));
 
         // set country combo with custom caption
-        this.filter.setCustomFilter("country", customFilterComponent(this.filter, "country"));
+        final GridCellFilter<Inhabitants>.CellFilterId id = this.filter.createCellFilterId("country");
+        this.filter.setCustomFilter(id, customFilterComponent(this.filter, id));
+
     }
 
     /**
