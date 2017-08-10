@@ -1,8 +1,9 @@
 package org.vaadin.gridutil.cell;
 
 import com.vaadin.data.BeanPropertySet;
+import com.vaadin.data.PropertyDefinition;
 import com.vaadin.data.PropertySet;
-import com.vaadin.data.converter.LocalDateToDateConverter;
+import com.vaadin.data.ValueProvider;
 import com.vaadin.data.provider.InMemoryDataProviderHelpers;
 import com.vaadin.data.provider.ListDataProvider;
 import com.vaadin.icons.VaadinIcons;
@@ -13,15 +14,13 @@ import com.vaadin.shared.ui.ValueChangeMode;
 import com.vaadin.ui.*;
 import com.vaadin.ui.components.grid.HeaderRow;
 import com.vaadin.ui.themes.ValoTheme;
-import org.vaadin.gridutil.cell.filter.BetweenFilter;
 import org.vaadin.gridutil.cell.filter.EqualFilter;
 import org.vaadin.gridutil.cell.filter.SimpleStringFilter;
 
 import java.io.Serializable;
-import java.text.SimpleDateFormat;
-import java.time.LocalDate;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.stream.Collectors;
 
 
 /**
@@ -34,25 +33,21 @@ public class GridCellFilter<T> implements Serializable {
 
     public static String STYLENAME_GRIDCELLFILTER = "gridcellfilter";
 
-    private static Date MIN_DATE_VALUE = new Date(0); // 1970-01-01 00:00:00
-
-    private static Date MAX_DATE_VALUE = new Date(32503676399000L); // 2999-12-31 23:59:59
-
     private Grid grid;
 
     private ListDataProvider<T> dataProvider;
 
     private HeaderRow filterHeaderRow;
 
-    private Map<String, CellFilterComponent> cellFilters;
+    private Map<CellFilterId, CellFilterComponent> cellFilters;
 
-    private Map<String, SerializablePredicate> assignedFilters;
+    private Map<CellFilterId, SerializablePredicate> assignedFilters;
 
     private boolean visible = true;
 
     private List<CellFilterChangedListener> cellFilterChangedListeners;
 
-    private PropertySet<T> propertySet;
+    private BeanPropertySet<T> propertySet;
 
     /**
      * keeps link to Grid and added HeaderRow<br>
@@ -73,7 +68,7 @@ public class GridCellFilter<T> implements Serializable {
             throw new RuntimeException("works only with ListDataProvider");
         } else {
             dataProvider = (ListDataProvider<T>) grid.getDataProvider();
-            propertySet = BeanPropertySet.get(beanType);
+            propertySet = (BeanPropertySet<T>) BeanPropertySet.get(beanType);
         }
     }
 
@@ -92,7 +87,10 @@ public class GridCellFilter<T> implements Serializable {
      * @return id of all properties that are currently filtered
      */
     public Set<String> filteredColumnIds() {
-        return assignedFilters.keySet();
+        return assignedFilters.keySet()
+                              .stream()
+                              .map(cellFilterId -> cellFilterId.getColumnId())
+                              .collect(Collectors.toSet());
     }
 
     /**
@@ -108,6 +106,7 @@ public class GridCellFilter<T> implements Serializable {
      * remove a listener for filter changes
      *
      * @param listener that should get removed
+     *
      * @return true when found and removed
      */
     public boolean removeCellFilterChangedListener(CellFilterChangedListener listener) {
@@ -134,15 +133,14 @@ public class GridCellFilter<T> implements Serializable {
             if (visibile) {
                 filterHeaderRow = grid.appendHeaderRow();
 
-                for (Entry<String, CellFilterComponent> entry : cellFilters.entrySet()) {
+                for (Entry<CellFilterId, CellFilterComponent> entry : cellFilters.entrySet()) {
                     handleFilterRow(entry.getKey(), entry.getValue());
                 }
             } else {
                 clearAllFilters();
-                for (Entry<String, CellFilterComponent> entry : cellFilters.entrySet()) {
-                    if (null != filterHeaderRow.getCell(entry.getKey())) {
-                        filterHeaderRow.getCell(entry.getKey())
-                                .setText("");
+                for (Entry<CellFilterId, CellFilterComponent> entry : cellFilters.entrySet()) {
+                    if (null != filterHeaderRow.getCell(entry.getKey().getColumnId())) {
+                        filterHeaderRow.getCell(entry.getKey().getColumnId()).setText("");
                     }
                 }
                 grid.removeHeaderRow(filterHeaderRow);
@@ -155,6 +153,7 @@ public class GridCellFilter<T> implements Serializable {
      * get filter by columnId
      *
      * @param columnId id of property
+     *
      * @return CellFilterComponent
      */
     public CellFilterComponent getCellFilter(String columnId) {
@@ -165,9 +164,8 @@ public class GridCellFilter<T> implements Serializable {
      * removes all filters and clear all inputs
      */
     public void clearAllFilters() {
-        for (Entry<String, CellFilterComponent> entry : cellFilters.entrySet()) {
-            entry.getValue()
-                    .clearFilter();
+        for (Entry<CellFilterId, CellFilterComponent> entry : cellFilters.entrySet()) {
+            entry.getValue().clearFilter();
             removeFilter(entry.getKey(), false);
         }
         notifyCellFilterChanged();
@@ -179,49 +177,53 @@ public class GridCellFilter<T> implements Serializable {
      * @param columnId id of property
      */
     public void clearFilter(String columnId) {
-        cellFilters.get(columnId)
-                .clearFilter();
-        removeFilter(columnId);
+        Set<Entry<CellFilterId, CellFilterComponent>> foundEntries = cellFilters.entrySet()
+                                                                                .stream()
+                                                                                .filter(entry -> entry.getKey()
+                                                                                                      .getColumnId()
+                                                                                                      .equals(columnId))
+                                                                                .collect(Collectors.toSet());
+        foundEntries.forEach(entry -> {
+            entry.getValue().clearFilter();
+            removeFilter(entry.getKey());
+        });
     }
 
     /**
      * link component to headerRow and take care for styling
      *
-     * @param columnId   id of property
-     * @param cellFilter component will get added to filterRow
+     * @param cellFilterId id information
+     * @param cellFilter   component will get added to filterRow
      */
-    protected void handleFilterRow(String columnId, CellFilterComponent<?> cellFilter) {
-        cellFilters.put(columnId, cellFilter);
-        cellFilter.getComponent()
-                .setWidth(100, Unit.PERCENTAGE);
+    protected void handleFilterRow(final CellFilterId cellFilterId, CellFilterComponent<?> cellFilter) {
+        cellFilters.put(cellFilterId, cellFilter);
+        cellFilter.getComponent().setWidth(100, Unit.PERCENTAGE);
+        final String columnId = cellFilterId.getColumnId();
         if (null != filterHeaderRow.getCell(columnId)) {
-            filterHeaderRow.getCell(columnId)
-                    .setComponent(cellFilter.getComponent());
-            filterHeaderRow.getCell(columnId)
-                    .setStyleName("filter-header");
+            filterHeaderRow.getCell(columnId).setComponent(cellFilter.getComponent());
+            filterHeaderRow.getCell(columnId).setStyleName("filter-header");
         }
     }
 
     /**
      * checks assignedFilters replace already handled one and add new one
      *
-     * @param filter   container filter
-     * @param columnId id of property
+     * @param filter       container filter
+     * @param cellFilterId id information
      */
-    public void replaceFilter(SerializablePredicate filter, String columnId) {
-        assignedFilters.put(columnId, filter);
+    public void replaceFilter(SerializablePredicate filter, CellFilterId cellFilterId) {
+        assignedFilters.put(cellFilterId, filter);
         refreshFilters();
     }
 
     private void refreshFilters() {
         dataProvider.clearFilters();
         SerializablePredicate<T> filter = null;
-        for (Entry<String, SerializablePredicate> entry :
-                assignedFilters.entrySet()) {
-            final String columnId = entry.getKey();
-            SerializablePredicate<T> singleFilter = InMemoryDataProviderHelpers.createValueProviderFilter(propertySet.getProperty(columnId)
-                    .get()
-                    .getGetter(), entry.getValue());
+        for (Entry<CellFilterId, SerializablePredicate> entry : assignedFilters.entrySet()) {
+            final CellFilterId cellFilterId = entry.getKey();
+            SerializablePredicate<T> singleFilter = InMemoryDataProviderHelpers.createValueProviderFilter
+                    (cellFilterId.getGetter(),
+                                                                                                          entry.getValue());
             if (filter == null) {
                 filter = singleFilter;
             } else {
@@ -237,15 +239,15 @@ public class GridCellFilter<T> implements Serializable {
     /**
      * remove the filter and notify listeners
      *
-     * @param columnId id of property
+     * @param cellFilterId id of property
      */
-    public void removeFilter(String columnId) {
-        removeFilter(columnId, true);
+    public void removeFilter(CellFilterId cellFilterId) {
+        removeFilter(cellFilterId, true);
     }
 
-    protected void removeFilter(String columnId, boolean notify) {
-        if (assignedFilters.containsKey(columnId)) {
-            assignedFilters.remove(columnId);
+    protected void removeFilter(CellFilterId cellFilterId, boolean notify) {
+        if (assignedFilters.containsKey(cellFilterId)) {
+            assignedFilters.remove(cellFilterId);
             refreshFilters();
             if (notify) {
                 notifyCellFilterChanged();
@@ -256,12 +258,26 @@ public class GridCellFilter<T> implements Serializable {
     /**
      * allows to add custom FilterComponents to the GridCellFilter
      *
-     * @param columnId  id of property
+     * @param columnId  id of column
      * @param component that implements the interface
+     *
      * @return your created component that is linked with the GridCellFilter
      */
     public CellFilterComponent setCustomFilter(String columnId, CellFilterComponent component) {
-        handleFilterRow(columnId, component);
+        return setCustomFilter(columnId, columnId, component);
+    }
+
+    /**
+     * allows to add custom FilterComponents to the GridCellFilter
+     *
+     * @param columnId   id of column
+     * @param propertyId id of the property
+     * @param component  that implements the interface
+     *
+     * @return your created component that is linked with the GridCellFilter
+     */
+    public CellFilterComponent setCustomFilter(String columnId, String propertyId, CellFilterComponent component) {
+        handleFilterRow(new CellFilterId(propertySet, columnId, propertyId), component);
         return component;
     }
 
@@ -272,6 +288,7 @@ public class GridCellFilter<T> implements Serializable {
      * @param columnId        id of property
      * @param ignoreCase      property of SimpleStringFilter
      * @param onlyMatchPrefix property of SimpleStringFilter
+     *
      * @return CellFilterComponent that contains TextField
      */
     public CellFilterComponent<TextField> setTextFilter(String columnId, boolean ignoreCase, boolean onlyMatchPrefix) {
@@ -282,13 +299,38 @@ public class GridCellFilter<T> implements Serializable {
      * assign a <b>SimpleStringFilter</b> to grid for given columnId<br>
      * could also be used for NumberField when you would like to do filter by startWith for example
      *
-     * @param columnId        id of property
+     * @param columnId        id of column and property if equal
      * @param ignoreCase      property of SimpleStringFilter
      * @param onlyMatchPrefix property of SimpleStringFilter
      * @param inputPrompt     hint for user
+     *
      * @return CellFilterComponent that contains TextField
      */
-    public CellFilterComponent<TextField> setTextFilter(String columnId, boolean ignoreCase, boolean onlyMatchPrefix, String inputPrompt) {
+    public CellFilterComponent<TextField> setTextFilter(String columnId,
+                                                        boolean ignoreCase,
+                                                        boolean onlyMatchPrefix,
+                                                        String inputPrompt) {
+        return setTextFilter(columnId, columnId, ignoreCase, onlyMatchPrefix, inputPrompt);
+    }
+
+    /**
+     * assign a <b>SimpleStringFilter</b> to grid for given columnId<br>
+     * could also be used for NumberField when you would like to do filter by startWith for example
+     *
+     * @param columnId        id of column
+     * @param propertyId      id of property
+     * @param ignoreCase      property of SimpleStringFilter
+     * @param onlyMatchPrefix property of SimpleStringFilter
+     * @param inputPrompt     hint for user
+     *
+     * @return CellFilterComponent that contains TextField
+     */
+    public CellFilterComponent<TextField> setTextFilter(String columnId,
+                                                        String propertyId,
+                                                        boolean ignoreCase,
+                                                        boolean onlyMatchPrefix,
+                                                        String inputPrompt) {
+        final CellFilterId cellFilterId = new CellFilterId(propertySet, columnId, propertyId);
         CellFilterComponent<TextField> filter = new CellFilterComponent<TextField>() {
 
             TextField textField = new TextField();
@@ -297,9 +339,9 @@ public class GridCellFilter<T> implements Serializable {
 
             public void triggerUpdate() {
                 if (currentValue == null || currentValue.isEmpty()) {
-                    removeFilter(columnId);
+                    removeFilter(cellFilterId);
                 } else {
-                    replaceFilter(new SimpleStringFilter(currentValue, ignoreCase, onlyMatchPrefix), columnId);
+                    replaceFilter(new SimpleStringFilter(currentValue, ignoreCase, onlyMatchPrefix), cellFilterId);
                 }
             }
 
@@ -323,28 +365,47 @@ public class GridCellFilter<T> implements Serializable {
                 textField.clear();
             }
         };
-        handleFilterRow(columnId, filter);
+        handleFilterRow(cellFilterId, filter);
         return filter;
     }
 
     /**
      * assign a <b>EqualFilter</b> to grid for given columnId
      *
-     * @param columnId id of property
+     * @param columnId id of column and property if equal
      * @param beanType class of selection
      * @param beans    selection for ComboBox
+     *
      * @return CellFilterComponent that contains ComboBox
      */
     public <B> CellFilterComponent<ComboBox<B>> setComboBoxFilter(String columnId, Class<B> beanType, List<B> beans) {
+        return setComboBoxFilter(columnId, columnId, beanType, beans);
+    }
+
+    /**
+     * assign a <b>EqualFilter</b> to grid for given columnId
+     *
+     * @param columnId   id of column
+     * @param propertyId id of property
+     * @param beanType   class of selection
+     * @param beans      selection for ComboBox
+     *
+     * @return CellFilterComponent that contains ComboBox
+     */
+    public <B> CellFilterComponent<ComboBox<B>> setComboBoxFilter(String columnId,
+                                                                  String propertyId,
+                                                                  Class<B> beanType,
+                                                                  List<B> beans) {
+        final CellFilterId cellFilterId = new CellFilterId(propertySet, columnId, propertyId);
         CellFilterComponent<ComboBox<B>> filter = new CellFilterComponent<ComboBox<B>>() {
 
             ComboBox<B> comboBox = new ComboBox();
 
             public void triggerUpdate() {
                 if (comboBox.getValue() != null) {
-                    replaceFilter(new EqualFilter(comboBox.getValue()), columnId);
+                    replaceFilter(new EqualFilter(comboBox.getValue()), cellFilterId);
                 } else {
-                    removeFilter(columnId);
+                    removeFilter(cellFilterId);
                 }
             }
 
@@ -364,7 +425,7 @@ public class GridCellFilter<T> implements Serializable {
             }
         };
 
-        handleFilterRow(columnId, filter);
+        handleFilterRow(cellFilterId, filter);
         return filter;
     }
 
@@ -372,6 +433,7 @@ public class GridCellFilter<T> implements Serializable {
      * assign a <b>EqualFilter</b> to grid for given columnId
      *
      * @param columnId id of property
+     *
      * @return drawn comboBox in order to add some custom styles
      */
     public ComboBox setBooleanFilter(String columnId) {
@@ -381,22 +443,43 @@ public class GridCellFilter<T> implements Serializable {
     /**
      * assign a <b>EqualFilter</b> to grid for given columnId
      *
-     * @param columnId            id of property
+     * @param columnId            id of property and column if equal
      * @param trueRepresentation  specify caption and icon
      * @param falseRepresentation specify caption and icon
+     *
      * @return drawn comboBox in order to add some custom styles
      */
-    public ComboBox setBooleanFilter(String columnId, BooleanRepresentation trueRepresentation, BooleanRepresentation falseRepresentation) {
-        CellFilterComponent<ComboBox<BooleanRepresentation>> filter = new CellFilterComponent<ComboBox<BooleanRepresentation>>() {
+    public ComboBox setBooleanFilter(String columnId,
+                                     BooleanRepresentation trueRepresentation,
+                                     BooleanRepresentation falseRepresentation) {
+        return setBooleanFilter(columnId, columnId, trueRepresentation, falseRepresentation);
+    }
+
+    /**
+     * assign a <b>EqualFilter</b> to grid for given columnId
+     *
+     * @param columnId            id of column
+     * @param propertyId          id of property
+     * @param trueRepresentation  specify caption and icon
+     * @param falseRepresentation specify caption and icon
+     *
+     * @return drawn comboBox in order to add some custom styles
+     */
+    public ComboBox setBooleanFilter(String columnId,
+                                     String propertyId,
+                                     BooleanRepresentation trueRepresentation,
+                                     BooleanRepresentation falseRepresentation) {
+        final CellFilterId cellFilterId = new CellFilterId(propertySet, columnId, propertyId);
+        CellFilterComponent<ComboBox<BooleanRepresentation>> filter = new
+                CellFilterComponent<ComboBox<BooleanRepresentation>>() {
 
             ComboBox<BooleanRepresentation> comboBox = new ComboBox();
 
             public void triggerUpdate() {
                 if (comboBox.getValue() != null) {
-                    replaceFilter(new EqualFilter(comboBox.getValue()
-                            .getValue()), columnId);
+                    replaceFilter(new EqualFilter(comboBox.getValue().getValue()), cellFilterId);
                 } else {
-                    removeFilter(columnId);
+                    removeFilter(cellFilterId);
                 }
             }
 
@@ -420,7 +503,7 @@ public class GridCellFilter<T> implements Serializable {
             }
         };
 
-        handleFilterRow(columnId, filter);
+        handleFilterRow(cellFilterId, filter);
         return filter.getComponent();
     }
 
@@ -428,163 +511,182 @@ public class GridCellFilter<T> implements Serializable {
      * assign a <b>BetweenFilter</b> to grid for given columnId<br>
      * only supports type of <b>Integer, Double, Float, BigInteger and BigDecimal</b>
      *
-     * @param columnId id of property
+     * @param columnId id of property and column if equal
      * @param type     type of the property
+     *
      * @return RangeCellFilterComponent that holds both TextFields (smallest and biggest as propertyId) and FilterGroup
      */
-    public <T extends Number & Comparable<? super T>> RangeCellFilterComponentTyped<T, TextField, HorizontalLayout> setNumberFilter(String columnId, Class type) {
-        return setNumberFilter(columnId, type, String.format("couldn't convert to %s", type.getSimpleName()), null, null);
+    public <T extends Number & Comparable<? super T>> RangeCellFilterComponentTyped<T, TextField, HorizontalLayout>
+    setNumberFilter(
+            String columnId,
+            Class type) {
+        return setNumberFilter(columnId, columnId, type);
     }
 
     /**
      * assign a <b>BetweenFilter</b> to grid for given columnId<br>
      * only supports type of <b>Integer, Double, Float, BigInteger and BigDecimal</b>
      *
-     * @param columnId              id of property
+     * @param columnId   id of column
+     * @param propertyId id of property
+     * @param type       type of the property
+     *
+     * @return RangeCellFilterComponent that holds both TextFields (smallest and biggest as propertyId) and FilterGroup
+     */
+    public <T extends Number & Comparable<? super T>> RangeCellFilterComponentTyped<T, TextField, HorizontalLayout>
+    setNumberFilter(
+            String columnId,
+            String propertyId,
+            Class type) {
+        return setNumberFilter(columnId,
+                               propertyId,
+                               type,
+                               String.format("couldn't convert to %s", type.getSimpleName()),
+                               null,
+                               null);
+    }
+
+    /**
+     * assign a <b>BetweenFilter</b> to grid for given columnId<br>
+     * only supports type of <b>Integer, Double, Float, BigInteger and BigDecimal</b>
+     *
+     * @param columnId              id of property and column if equal
      * @param type                  type of the property
      * @param converterErrorMessage message to be displayed in case of a converter error
      * @param smallestInputPrompt   hint for user
      * @param biggestInputPrompt    hint for user
+     *
      * @return RangeCellFilterComponent that holds both TextFields (smallest and biggest as propertyId) and FilterGroup
      */
-    public <T extends Number & Comparable<? super T>> RangeCellFilterComponentTyped<T, TextField, HorizontalLayout> setNumberFilter(String columnId, Class<T> type, String converterErrorMessage, String smallestInputPrompt, String biggestInputPrompt) {
+    public <T extends Number & Comparable<? super T>> RangeCellFilterComponentTyped<T, TextField, HorizontalLayout>
+    setNumberFilter(
+            String columnId,
+            Class<T> type,
+            String converterErrorMessage,
+            String smallestInputPrompt,
+            String biggestInputPrompt) {
+        return setNumberFilter(columnId,
+                               columnId,
+                               type,
+                               converterErrorMessage,
+                               smallestInputPrompt,
+                               biggestInputPrompt);
+    }
 
-        RangeCellFilterComponentTyped<T, TextField, HorizontalLayout> filter =
-                RangeCellFilterComponentFactory.createForNumberType(
-                        columnId,
-                        type,
-                        converterErrorMessage,
-                        smallestInputPrompt,
-                        biggestInputPrompt,
-                        (serFilter, propertyId) -> this.replaceFilter(serFilter, propertyId),
-                        this::removeFilter
-                );
+    /**
+     * assign a <b>BetweenFilter</b> to grid for given columnId<br>
+     * only supports type of <b>Integer, Double, Float, BigInteger and BigDecimal</b>
+     *
+     * @param columnId              id of column
+     * @param propertyId            id of property
+     * @param type                  type of the property
+     * @param converterErrorMessage message to be displayed in case of a converter error
+     * @param smallestInputPrompt   hint for user
+     * @param biggestInputPrompt    hint for user
+     *
+     * @return RangeCellFilterComponent that holds both TextFields (smallest and biggest as propertyId) and FilterGroup
+     */
+    public <T extends Number & Comparable<? super T>> RangeCellFilterComponentTyped<T, TextField, HorizontalLayout>
+    setNumberFilter(
+            String columnId,
+            String propertyId,
+            Class<T> type,
+            String converterErrorMessage,
+            String smallestInputPrompt,
+            String biggestInputPrompt) {
+        final CellFilterId cellFilterId = new CellFilterId(propertySet, columnId, propertyId);
+        final RangeCellFilterComponentTyped<T, TextField, HorizontalLayout> filter = RangeCellFilterComponentFactory
+                .createForNumberType(
+                cellFilterId,
+                type,
+                converterErrorMessage,
+                smallestInputPrompt,
+                biggestInputPrompt,
+                (serFilter, cellFilterId1) -> this.replaceFilter(serFilter, cellFilterId1),
+                this::removeFilter);
 
-        handleFilterRow(columnId, filter);
+        handleFilterRow(cellFilterId, filter);
         return filter;
     }
 
     /**
      * assign a <b>BetweenFilter</b> to grid for given columnId<br>
      *
-     * @param columnId id of property
+     * @param columnId id of property and column if equal
+     *
      * @return RangeCellFilterComponent that holds both DateFields (smallest and biggest as propertyId) and FilterGroup
      */
     public RangeCellFilterComponent<DateField, HorizontalLayout> setDateFilter(String columnId) {
+        return setDateFilter(columnId, columnId);
+    }
+
+    /**
+     * assign a <b>BetweenFilter</b> to grid for given columnId and propertyId<br>
+     *
+     * @param columnId   id of column
+     * @param propertyId id of property
+     *
+     * @return RangeCellFilterComponent that holds both DateFields (smallest and biggest as propertyId) and FilterGroup
+     */
+    public RangeCellFilterComponent<DateField, HorizontalLayout> setDateFilter(String columnId, String propertyId) {
         return setDateFilter(columnId, null, true);
     }
 
     /**
      * assign a <b>BetweenFilter</b> to grid for given columnId<br>
      *
-     * @param columnId        id of property
+     * @param columnId        id of property and column if equal
      * @param dateFormat      the dateFormat to be used for the date fields.
      * @param excludeEndOfDay biggest value until the end of the day (DAY + 23:59:59.999)
+     *
      * @return RangeCellFilterComponent that holds both DateFields (smallest and biggest as propertyId) and FilterGroup
      */
-    public RangeCellFilterComponent<DateField, HorizontalLayout> setDateFilter(String columnId, java.text.SimpleDateFormat dateFormat, boolean excludeEndOfDay) {
-        Class<?> propertyType = propertySet.getProperty(columnId)
-                .get()
-                .getType();
+    public RangeCellFilterComponent<DateField, HorizontalLayout> setDateFilter(String columnId,
+                                                                               java.text.SimpleDateFormat dateFormat,
+                                                                               boolean excludeEndOfDay) {
+        return setDateFilter(columnId, columnId, dateFormat, excludeEndOfDay);
+    }
+
+    /**
+     * assign a <b>BetweenFilter</b> to grid for given columnId and propertyId<br>
+     *
+     * @param columnId        id of column
+     * @param propertyId      id of property
+     * @param dateFormat      the dateFormat to be used for the date fields.
+     * @param excludeEndOfDay biggest value until the end of the day (DAY + 23:59:59.999)
+     *
+     * @return RangeCellFilterComponent that holds both DateFields (smallest and biggest as propertyId) and FilterGroup
+     */
+    public RangeCellFilterComponent<DateField, HorizontalLayout> setDateFilter(String columnId,
+                                                                               String propertyId,
+                                                                               java.text.SimpleDateFormat dateFormat,
+                                                                               boolean excludeEndOfDay) {
+        final CellFilterId cellFilterId = new CellFilterId(propertySet, columnId, propertyId);
+        final Class<?> propertyType = cellFilterId.getPropertyType();
         if (!Date.class.equals(propertyType)) {
             throw new IllegalArgumentException("columnId " + columnId + " is not of type Date");
         }
-        RangeCellFilterComponent<DateField, HorizontalLayout> filter = new RangeCellFilterComponent<DateField, HorizontalLayout>() {
+        final RangeCellFilterComponent<DateField, HorizontalLayout> filter = RangeCellFilterComponentFactory
+                .createForDate(
+                cellFilterId,
+                dateFormat,
+                excludeEndOfDay,
+                (serFilter, cellFilterId1) -> this.replaceFilter(serFilter, cellFilterId1),
+                this::removeFilter);
 
-            private final LocalDateToDateConverter ldToDateConverter = new LocalDateToDateConverter();
-
-            private DateField smallest;
-
-            private DateField biggest;
-
-            @Override
-            public DateField getSmallestField() {
-                if (smallest == null) {
-                    smallest = genDateField(SMALLEST, dateFormat);
-                }
-                return smallest;
-            }
-
-            @Override
-            public DateField getBiggestField() {
-                if (biggest == null) {
-                    biggest = genDateField(BIGGEST, dateFormat);
-                }
-                return biggest;
-            }
-
-            private DateField genDateField(final String propertyId, final SimpleDateFormat dateFormat) {
-                return FieldFactory.genDateField(getBinder(), propertyId, dateFormat);
-            }
-
-            @Override
-            public HorizontalLayout layoutComponent() {
-                getHLayout().addComponent(getSmallestField());
-                getHLayout().addComponent(getBiggestField());
-                getHLayout().setExpandRatio(getSmallestField(), 1);
-                getHLayout().setExpandRatio(getBiggestField(), 1);
-
-                initBinderValueChangeHandler();
-
-                return getHLayout();
-            }
-
-            private Date fixTiming(Date date, boolean excludeEndOfDay) {
-                Calendar calendar = Calendar.getInstance();
-                calendar.setTime(date);
-                calendar.set(Calendar.MILLISECOND, excludeEndOfDay ? 0 : 999);
-                calendar.set(Calendar.SECOND, excludeEndOfDay ? 0 : 59);
-                calendar.set(Calendar.MINUTE, excludeEndOfDay ? 0 : 59);
-                calendar.set(Calendar.HOUR, excludeEndOfDay ? 0 : 23);
-                return calendar.getTime();
-            }
-
-            private void initBinderValueChangeHandler() {
-                getBinder().addValueChangeListener(e -> {
-                    Object smallest = getBinder().getBean()
-                            .getSmallest();
-                    Object biggest = getBinder().getBean()
-                            .getBiggest();
-                    Date smallestDate = checkObject(smallest);
-                    Date biggestDate = checkObject(biggest);
-                    if (this.smallest != null || biggest != null) {
-                        if (this.smallest != null && biggest != null && this.smallest.equals(biggest)) {
-                            replaceFilter(new EqualFilter(this.smallest), columnId);
-                        } else {
-                            replaceFilter(new BetweenFilter(smallestDate != null ? fixTiming(smallestDate, true) : MIN_DATE_VALUE,
-                                    biggestDate != null ? fixTiming(biggestDate, excludeEndOfDay) : MAX_DATE_VALUE), columnId);
-                        }
-                    } else {
-                        removeFilter(columnId);
-                    }
-                });
-            }
-
-            private Date checkObject(Object value) {
-                if (value instanceof LocalDate) {
-                    return ldToDateConverter.convertToModel((LocalDate) value, null)
-                            .getOrThrow(msg -> new IllegalArgumentException(msg));
-                } else if (value instanceof Date) {
-                    return (Date) value;
-                }
-                return null;
-            }
-
-            @Override
-            public void clearFilter() {
-                getBinder().setBean(new TwoValueObject());
-            }
-        };
-
-        handleFilterRow(columnId, filter);
+        handleFilterRow(cellFilterId, filter);
         return filter;
     }
 
     public static class BooleanRepresentation {
 
-        public static BooleanRepresentation TRUE_VALUE = new BooleanRepresentation(true, VaadinIcons.CHECK_SQUARE, Boolean.TRUE.toString());
+        public static BooleanRepresentation TRUE_VALUE = new BooleanRepresentation(true,
+                                                                                   VaadinIcons.CHECK_SQUARE,
+                                                                                   Boolean.TRUE.toString());
 
-        public static BooleanRepresentation FALSE_VALUE = new BooleanRepresentation(false, VaadinIcons.CLOSE, Boolean.FALSE.toString());
+        public static BooleanRepresentation FALSE_VALUE = new BooleanRepresentation(false,
+                                                                                    VaadinIcons.CLOSE,
+                                                                                    Boolean.FALSE.toString());
 
         private boolean value;
 
@@ -608,6 +710,63 @@ public class GridCellFilter<T> implements Serializable {
 
         public boolean getValue() {
             return value;
+        }
+    }
+
+    public class CellFilterId implements Serializable {
+        private final String                   columnId;
+        private final String                   propertyId;
+        private final PropertyDefinition<T, ?> propertyDefinition;
+
+        public CellFilterId(final PropertySet<T> propertySet, final String columnId, final String propertyId) {
+            this.columnId = columnId;
+            this.propertyId = propertyId;
+            Optional<PropertyDefinition<T, ?>> optionalProperty = propertySet.getProperty(propertyId);
+            if (!optionalProperty.isPresent()) {
+                throw new NoSuchElementException(String.format("propertyId %s not available", propertyId));
+            } else {
+                propertyDefinition = optionalProperty.get();
+            }
+        }
+
+        public String getColumnId() {
+            return columnId;
+        }
+
+        public String getPropertyId() {
+            return propertyId;
+        }
+
+        public ValueProvider<T, ?> getGetter() {
+            return propertyDefinition.getGetter();
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            CellFilterId that = (CellFilterId) o;
+
+            if (columnId != null ? !columnId.equals(that.columnId) : that.columnId != null) {
+                return false;
+            }
+            return propertyId != null ? propertyId.equals(that.propertyId) : that.propertyId == null;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = columnId != null ? columnId.hashCode() : 0;
+            result = 31 * result + (propertyId != null ? propertyId.hashCode() : 0);
+            return result;
+        }
+
+        public Class<?> getPropertyType() {
+            return propertyDefinition.getType();
         }
     }
 }
