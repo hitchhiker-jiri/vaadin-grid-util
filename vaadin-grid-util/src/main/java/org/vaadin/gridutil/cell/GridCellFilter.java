@@ -298,7 +298,7 @@ public class GridCellFilter<T> implements Serializable {
      * assign a <b>SimpleStringFilter</b> to grid for given columnId<br>
      * could also be used for NumberField when you would like to do filter by startWith for example
      *
-     * @param columnId        id of property
+     * @param columnId        id of column and property if equal
      * @param ignoreCase      property of SimpleStringFilter
      * @param onlyMatchPrefix property of SimpleStringFilter
      *
@@ -306,6 +306,21 @@ public class GridCellFilter<T> implements Serializable {
      */
     public CellFilterComponent<TextField> setTextFilter(String columnId, boolean ignoreCase, boolean onlyMatchPrefix) {
         return setTextFilter(columnId, ignoreCase, onlyMatchPrefix, null);
+    }
+
+    /**
+     * assign a <b>SimpleStringFilter</b> to grid for given columnId<br>
+     * could also be used for NumberField when you would like to do filter by startWith for example
+     *
+     * @param columnId        id of property
+     * @param ignoreCase      property of SimpleStringFilter
+     * @param onlyMatchPrefix property of SimpleStringFilter
+     *
+     * @return CellFilterComponent that contains TextField
+     */
+    public CellFilterComponent<TextField> setTextFilter(String columnId, String propertyId, boolean ignoreCase, boolean
+            onlyMatchPrefix) {
+        return setTextFilter(columnId, propertyId, ignoreCase, onlyMatchPrefix, null);
     }
 
     /**

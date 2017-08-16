@@ -97,6 +97,8 @@ public class DemoUI extends UI {
                         }))
                 .setWidth(160);
 
+        Grid.Column bodySize = grid.getColumn("bodySize");
+        bodySize.setRenderer(new IndicatorRenderer(1.8, 1.1));
         grid.getColumn("bodySize")
                 .setRenderer(new IndicatorRenderer(1.8, 1.1))
                 .setWidth(150);
