@@ -77,7 +77,7 @@
         <dependency>
             <groupId>org.vaadin.addons</groupId>
             <artifactId>vaadin-grid-util</artifactId>
-            <version>${version}</version>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.vaadin</groupId>
