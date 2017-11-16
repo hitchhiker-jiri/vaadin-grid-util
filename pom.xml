@@ -59,7 +59,7 @@
     <scm>
         <connection>scm:git:git@github.com:hitchhiker-jiri/vaadin-grid-util.git</connection>
         <developerConnection>scm:git:git@github.com:hitchhiker-jiri/vaadin-grid-util.git</developerConnection>
-        <url>https://github.com/melistik/vaadin-grid-util.git</url>
+        <url>https://github.com/hitchhiker-jiri/vaadin-grid-util.git</url>
         <tag>HEAD</tag>
     </scm>
 
