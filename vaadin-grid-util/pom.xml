@@ -11,9 +11,15 @@
     <name>GridUtil</name>
     <description>GridUtil that simplify the use of filtering and some useful custom renderes</description>
 
-    <url>https://github.com/melistik/vaadin-grid-util</url>
+    <url>https://github.com/hitchhiker-jiri/vaadin-grid-util</url>
 
     <developers>
+        <developer>
+            <name>Georg Hicker</name>
+            <email>georg@hicker.eu</email>
+            <organization></organization>
+            <url>http://www.hicker.eu</url>
+        </developer>
         <developer>
             <name>Marten Prieß</name>
             <email>marten@rocketbase.io</email>
