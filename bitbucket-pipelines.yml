@@ -11,5 +11,7 @@ pipelines:
         caches:
           - maven
         script: # Modify the commands below to build your repository.
+          - git config --global user.email "test@mail.com"
+          - git config --global user.name "Bitbucket Pipeline"
           - mvn -B release:prepare # -B batch mode makes Maven less verbose
           - mvn -B clean release:perform # -B batch mode makes Maven less verbose
