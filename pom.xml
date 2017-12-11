@@ -5,7 +5,7 @@
     <groupId>org.vaadin.addons</groupId>
     <artifactId>vaadin-grid-util-root</artifactId>
     <packaging>pom</packaging>
-    <version>2.1.1.int</version>
+    <version>2.1.2.int-SNAPSHOT</version>
 
     <modules>
         <module>vaadin-grid-util</module>
@@ -60,7 +60,7 @@
         <connection>scm:git:git@github.com:hitchhiker-jiri/vaadin-grid-util.git</connection>
         <developerConnection>scm:git:git@github.com:hitchhiker-jiri/vaadin-grid-util.git</developerConnection>
         <url>https://github.com/hitchhiker-jiri/vaadin-grid-util.git</url>
-        <tag>vaadin-grid-util-root-2.1.1.int</tag>
+        <tag>HEAD</tag>
     </scm>
 
     <repositories>
