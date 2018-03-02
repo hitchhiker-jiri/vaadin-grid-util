@@ -4,23 +4,34 @@ import com.vaadin.data.BeanPropertySet;
 import com.vaadin.data.PropertyDefinition;
 import com.vaadin.data.PropertySet;
 import com.vaadin.data.ValueProvider;
+import com.vaadin.data.provider.InMemoryDataProvider;
 import com.vaadin.data.provider.InMemoryDataProviderHelpers;
-import com.vaadin.data.provider.ListDataProvider;
 import com.vaadin.icons.VaadinIcons;
 import com.vaadin.server.FontIcon;
 import com.vaadin.server.SerializablePredicate;
 import com.vaadin.server.Sizeable.Unit;
 import com.vaadin.shared.ui.ValueChangeMode;
-import com.vaadin.ui.*;
+import com.vaadin.ui.ComboBox;
+import com.vaadin.ui.DateField;
+import com.vaadin.ui.Grid;
+import com.vaadin.ui.HorizontalLayout;
+import com.vaadin.ui.TextField;
 import com.vaadin.ui.components.grid.HeaderRow;
 import com.vaadin.ui.themes.ValoTheme;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.NoSuchElementException;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.vaadin.gridutil.cell.filter.EqualFilter;
 import org.vaadin.gridutil.cell.filter.SimpleStringFilter;
-
-import java.io.Serializable;
-import java.util.*;
-import java.util.Map.Entry;
-import java.util.stream.Collectors;
 
 
 /**
@@ -34,8 +45,6 @@ public class GridCellFilter<T> implements Serializable {
     public static String STYLENAME_GRIDCELLFILTER = "gridcellfilter";
 
     private Grid grid;
-
-    private ListDataProvider<T> dataProvider;
 
     private HeaderRow filterHeaderRow;
 
@@ -64,10 +73,9 @@ public class GridCellFilter<T> implements Serializable {
         cellFilterChangedListeners = new ArrayList<>();
 
 
-        if (!(grid.getDataProvider() instanceof ListDataProvider)) {
-            throw new RuntimeException("works only with ListDataProvider");
+        if (!(grid.getDataProvider() instanceof InMemoryDataProvider)) {
+            throw new RuntimeException("works only with InMemoryDataProvider");
         } else {
-            dataProvider = (ListDataProvider<T>) grid.getDataProvider();
             propertySet = (BeanPropertySet<T>) BeanPropertySet.get(beanType);
         }
     }
@@ -217,13 +225,11 @@ public class GridCellFilter<T> implements Serializable {
     }
 
     private void refreshFilters() {
-        dataProvider.clearFilters();
         SerializablePredicate<T> filter = null;
         for (Entry<CellFilterId, SerializablePredicate> entry : assignedFilters.entrySet()) {
             final CellFilterId cellFilterId = entry.getKey();
-            SerializablePredicate<T> singleFilter = InMemoryDataProviderHelpers.createValueProviderFilter
-                    (cellFilterId.getGetter(),
-                                                                                                          entry.getValue());
+            SerializablePredicate<T> singleFilter = InMemoryDataProviderHelpers.createValueProviderFilter(
+                    cellFilterId.getGetter(), entry.getValue());
             if (filter == null) {
                 filter = singleFilter;
             } else {
@@ -231,9 +237,8 @@ public class GridCellFilter<T> implements Serializable {
                 filter = (item -> tempFilter.test(item) && singleFilter.test(item));
             }
         }
-        if (filter != null) {
-            dataProvider.setFilter(filter);
-        }
+        ((InMemoryDataProvider<T>) grid.getDataProvider())
+                .setFilter(filter);
     }
 
     /**
